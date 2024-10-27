@@ -1,0 +1,12 @@
+{
+  "name": "fm-data-capture",
+  "version": "1.0.0",
+  "description": "Captures telemetry data in real-time from Forza Motorsport (2023)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Kyle Shervington",
+  "license": "ISC"
+}
