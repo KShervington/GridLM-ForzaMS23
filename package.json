@@ -1,5 +1,5 @@
 {
-  "name": "fm-data-capture",
+  "name": "gridlm-forzams23",
   "version": "1.0.0",
   "description": "Captures telemetry data in real-time from Forza Motorsport (2023)",
   "main": "index.js",
