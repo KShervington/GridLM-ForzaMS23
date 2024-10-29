@@ -1,6 +1,6 @@
 import { createSocket } from "dgram";
 import { createWriteStream } from "fs";
-import { MongoClient, ServerApiVersion } from "mongodb";
+import mongoose from "mongoose";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -107,19 +107,18 @@ function parseDashPacket(msg) {
   return parsedData;
 }
 
+server.on("listening", () => {
+  writeStream.write("[");
+});
+
 // When a message is received
 server.on("message", (msg, rinfo) => {
   // Parse the received data
   const parsedData = parseDashPacket(msg);
 
-  // Write parsed data to file TODO: Send data to remote db instead
+  // Write parsed data to file TODO: Send data to remote db
   if (Object.keys(parsedData).length > 0)
     writeStream.write(JSON.stringify(parsedData) + ",\n");
-});
-
-server.on("close", () => {
-  writeStream.write("]");
-  server.disconnect();
 });
 
 // Handle errors
@@ -128,21 +127,22 @@ server.on("error", (err) => {
   server.disconnect();
 });
 
+server.on("close", () => {
+  writeStream.write("]");
+  server.disconnect();
+});
+
 const connectToDb = async function () {
-  // Create a MongoClient with a MongoClientOptions object to set the Stable API version
-  const client = new MongoClient(process.env.MONGODB_CONNECTION_URI, {
-    serverApi: {
-      version: ServerApiVersion.v1,
-      strict: true,
-      deprecationErrors: true,
-    },
-  });
+  const clientOptions = {
+    serverApi: { version: "1", strict: true, deprecationErrors: true },
+  };
 
   try {
-    // Connect the client to the server
-    await client.connect();
-    // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
+    // Create a Mongoose client with a MongoClientOptions object to set the Stable API version
+    await mongoose.connect(process.env.MONGODB_CONNECTION_URI, clientOptions);
+
+    await mongoose.connection.db.admin().command({ ping: 1 });
+
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
@@ -150,7 +150,7 @@ const connectToDb = async function () {
     console.dir(err);
   } finally {
     // Ensures that the client will close when you finish/error
-    await client.close();
+    await mongoose.disconnect();
   }
 };
 
@@ -159,6 +159,4 @@ server.bind(3000, "127.0.0.1", () => {
   console.log("UDP server listening on 127.0.0.1:3000");
 
   connectToDb();
-
-  writeStream.write("[");
 });
