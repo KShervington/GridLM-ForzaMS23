@@ -39,14 +39,14 @@ function parseDashPacket(msg) {
   isDriving = Number(buffer.readInt32LE(0)) === 1 ? true : false;
 
   if (isDriving) {
-    parsedData.timestamp = buffer.readUInt32LE(4);
+    parsedData.timestamp = buffer.readUInt32LE(4); // Needs to be converted to Date type for mongoDB storage
     parsedData.currentEngineRpm = buffer.readFloatLE(16);
     parsedData.speed = buffer.readFloatLE(244);
     parsedData.throttlePercent = Math.floor(buffer.readUInt8(303) / 255) * 100; // 0 - 255 for how much throttle is being applied
     parsedData.brake = buffer.readUInt8(304);
     parsedData.gear = buffer.readUInt8(307);
     parsedData.steering = buffer.readInt8(308); // 127 is full right; -127 is full left; up and down are both 0
-    parsedData.drivingLine = buffer.readInt8(309);
+    parsedData.drivingLine = buffer.readInt8(309); // not sure how to interpret this value
 
     parsedData.numWheelsOnRumbleStrip = parseInt(
       buffer.readFloatLE(116) +
@@ -86,12 +86,13 @@ function parseDashPacket(msg) {
     parsedData.geometry.velocityX = buffer.readFloatLE(32);
     parsedData.geometry.velocityY = buffer.readFloatLE(36);
 
+    parsedData.currentLap = buffer.readUInt16LE(300) + 1; // 1st lap is considered lap 0
+
     parsedData.lapInfo = {};
-    parsedData.lapInfo.currentLap = buffer.readUInt16LE(300);
     // Distance is cumulative so it needs to be adjusted
     parsedData.lapInfo.distanceTraveled = getLapDistance(
       buffer.readFloatLE(280),
-      parsedData.lapInfo.currentLap
+      parsedData.currentLap - 1
     );
 
     parsedData.lapInfo.segment = getCurrentSegment(
@@ -118,6 +119,7 @@ server.on("message", (msg, rinfo) => {
 
 server.on("close", () => {
   writeStream.write("]");
+  server.disconnect();
 });
 
 // Handle errors
