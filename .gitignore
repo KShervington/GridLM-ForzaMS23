@@ -1,3 +1,7 @@
 node_modules
 
+# Environment variable
 .env
+
+# Data logged locally before being sent to database
+data

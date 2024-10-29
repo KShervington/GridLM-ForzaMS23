@@ -1,19 +1,17 @@
 import { createSocket } from "dgram";
 import { createWriteStream } from "fs";
-import mongoose from "mongoose";
-import dotenv from "dotenv";
-
-dotenv.config();
+import { connectToDb, sendDataToDb } from "./src/config/db.js";
 
 // Create a UDP socket
 const server = createSocket("udp4");
 
 // Define the file where the parsed data will be saved
-const filePath = "parsed_output.json";
+const filePath = "data/telemetry.json";
 const writeStream = createWriteStream(filePath);
 
 const trackLength = 2253;
 const numSegments = 10;
+let sep = ""; // separator for json data
 
 // Returns the distance traveled in the current lap
 function getLapDistance(totalDistance, currentLap) {
@@ -39,7 +37,7 @@ function parseDashPacket(msg) {
   isDriving = Number(buffer.readInt32LE(0)) === 1 ? true : false;
 
   if (isDriving) {
-    parsedData.timestamp = buffer.readUInt32LE(4); // Needs to be converted to Date type for mongoDB storage
+    parsedData.timestamp = buffer.readUInt32LE(4) * 1000; // convert to 64-bit integer by multiplying by 1000
     parsedData.currentEngineRpm = buffer.readFloatLE(16);
     parsedData.speed = buffer.readFloatLE(244);
     parsedData.throttlePercent = Math.floor(buffer.readUInt8(303) / 255) * 100; // 0 - 255 for how much throttle is being applied
@@ -108,6 +106,7 @@ function parseDashPacket(msg) {
 }
 
 server.on("listening", () => {
+  console.log("UDP server listening on 127.0.0.1:3000");
   writeStream.write("[");
 });
 
@@ -116,9 +115,12 @@ server.on("message", (msg, rinfo) => {
   // Parse the received data
   const parsedData = parseDashPacket(msg);
 
-  // Write parsed data to file TODO: Send data to remote db
-  if (Object.keys(parsedData).length > 0)
-    writeStream.write(JSON.stringify(parsedData) + ",\n");
+  if (Object.keys(parsedData).length > 0) {
+    writeStream.write(sep + JSON.stringify(parsedData, null, 4));
+
+    // If there is no separator, which is the default, then assign one
+    if (!sep) sep = ",\n";
+  }
 });
 
 // Handle errors
@@ -127,36 +129,33 @@ server.on("error", (err) => {
   server.disconnect();
 });
 
-server.on("close", () => {
-  writeStream.write("]");
-  server.disconnect();
-});
-
-const connectToDb = async function () {
-  const clientOptions = {
-    serverApi: { version: "1", strict: true, deprecationErrors: true },
-  };
-
-  try {
-    // Create a Mongoose client with a MongoClientOptions object to set the Stable API version
-    await mongoose.connect(process.env.MONGODB_CONNECTION_URI, clientOptions);
-
-    await mongoose.connection.db.admin().command({ ping: 1 });
-
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
-  } catch (err) {
-    console.dir(err);
-  } finally {
-    // Ensures that the client will close when you finish/error
-    await mongoose.disconnect();
-  }
-};
-
 // Bind to the port and IP where Forza is sending data
 server.bind(3000, "127.0.0.1", () => {
-  console.log("UDP server listening on 127.0.0.1:3000");
-
   connectToDb();
+});
+
+// Tasks to perform before server is shutdown
+const shutdownOperations = async function () {
+  // Write to end of file to create valid json array
+  writeStream.write("]");
+  await new Promise((resolve) => writeStream.end(resolve));
+  console.log("File writing completed, sending data to DB.");
+
+  // Send database from file to database
+  await sendDataToDb();
+};
+
+// Handle SIGINT signal (Ctrl+C)
+process.on("SIGINT", () => {
+  console.log("Received SIGINT, initiating server shutdown...");
+
+  // Close the server
+  server.close(async () => {
+    console.log("Performing shutdown operations...");
+
+    await shutdownOperations();
+
+    console.log("Shutdown operations complete.\n\nSHUTTING DOWN SERVER");
+    process.exit(0); // Exit the process
+  });
 });
