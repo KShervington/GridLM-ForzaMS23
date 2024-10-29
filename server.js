@@ -1,13 +1,16 @@
-const dgram = require("dgram");
-const fs = require("fs");
-const path = require("path");
+import { createSocket } from "dgram";
+import { createWriteStream } from "fs";
+import { MongoClient, ServerApiVersion } from "mongodb";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 // Create a UDP socket
-const server = dgram.createSocket("udp4");
+const server = createSocket("udp4");
 
 // Define the file where the parsed data will be saved
-const filePath = path.join(__dirname, "parsed_output.json");
-const writeStream = fs.createWriteStream(filePath);
+const filePath = "parsed_output.json";
+const writeStream = createWriteStream(filePath);
 
 const trackLength = 2253;
 const numSegments = 10;
@@ -17,13 +20,14 @@ function getLapDistance(totalDistance, currentLap) {
   return totalDistance - currentLap * trackLength;
 }
 
+// Calculate the current segment of the lap based on number of segments and track length
 function getCurrentSegment(currDistance) {
   const distancePerSeg = trackLength / numSegments;
 
   return Math.floor(currDistance / distancePerSeg) + 1;
 }
 
-// Function to parse the binary data according to the Sled format
+// Function to parse the binary data according to the Dash format
 function parseDashPacket(msg) {
   const parsedData = {};
 
@@ -107,13 +111,13 @@ server.on("message", (msg, rinfo) => {
   // Parse the received data
   const parsedData = parseDashPacket(msg);
 
-  // Write parsed data to file
+  // Write parsed data to file TODO: Send data to remote db instead
   if (Object.keys(parsedData).length > 0)
     writeStream.write(JSON.stringify(parsedData) + ",\n");
 });
 
 server.on("close", () => {
-  writeStream.write("]}");
+  writeStream.write("]");
 });
 
 // Handle errors
@@ -122,8 +126,37 @@ server.on("error", (err) => {
   server.disconnect();
 });
 
+const connectToDb = async function () {
+  // Create a MongoClient with a MongoClientOptions object to set the Stable API version
+  const client = new MongoClient(process.env.MONGODB_CONNECTION_URI, {
+    serverApi: {
+      version: ServerApiVersion.v1,
+      strict: true,
+      deprecationErrors: true,
+    },
+  });
+
+  try {
+    // Connect the client to the server
+    await client.connect();
+    // Send a ping to confirm a successful connection
+    await client.db("admin").command({ ping: 1 });
+    console.log(
+      "Pinged your deployment. You successfully connected to MongoDB!"
+    );
+  } catch (err) {
+    console.dir(err);
+  } finally {
+    // Ensures that the client will close when you finish/error
+    await client.close();
+  }
+};
+
 // Bind to the port and IP where Forza is sending data
 server.bind(3000, "127.0.0.1", () => {
   console.log("UDP server listening on 127.0.0.1:3000");
-  writeStream.write('{"data": [');
+
+  connectToDb();
+
+  writeStream.write("[");
 });
