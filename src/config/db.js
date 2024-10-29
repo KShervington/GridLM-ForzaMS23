@@ -7,13 +7,22 @@ dotenv.config();
 mongoose.set("debug", false); // Logs database operations when true
 
 export const connectToDb = async function () {
-  const clientOptions = {
+  let uri = "";
+
+  let clientOptions = {
     serverApi: { version: "1", strict: false, deprecationErrors: true },
   };
 
+  if (process.env.ENVIRONMENT === "prod") {
+    uri = process.env.MONGODB_CONNECTION_URI;
+    clientOptions.dbName = "SuzukaCircuit";
+  } else {
+    uri = process.env.MONGODB_LOCAL_CONNECTION_URI;
+  }
+
   try {
     // Create a Mongoose client with a MongoClientOptions object to set the Stable API version
-    await mongoose.connect(process.env.MONGODB_CONNECTION_URI, clientOptions);
+    await mongoose.connect(uri, clientOptions);
 
     await mongoose.connection.db.admin().command({ ping: 1 });
 
