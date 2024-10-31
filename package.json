@@ -1,12 +1,17 @@
 {
   "name": "gridlm-forzams23",
   "version": "1.0.0",
+  "type": "module",
   "description": "Captures telemetry data in real-time from Forza Motorsport (2023)",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Kyle Shervington",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "mongoose": "^8.7.3"
+  }
 }
