@@ -1,7 +1,10 @@
 node_modules
 
-# Environment variable
+# Environment variables
 .env
+
+# Virtual environment
+.conda-env
 
 # Data logged locally before being sent to database
 data
