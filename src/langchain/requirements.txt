@@ -1,0 +1,9 @@
+langchain
+langchain-community
+langgraph
+langgraph-checkpoint-sqlite
+python-dotenv
+pymongo
+pandas
+openai
+llama-cpp-python
