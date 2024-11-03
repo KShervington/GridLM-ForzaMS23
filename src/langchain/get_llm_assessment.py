@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 from pymongo import MongoClient
+from langchain.prompts import PromptTemplate
 import pandas as pd
 import json
 import os
@@ -7,8 +8,11 @@ import os
 # Load the environment variables from the .env file
 load_dotenv()
 
-DATABASE_NAME = "test"
-COLLECTION_NAME = "telemetries"
+DATABASE_NAME = "SuzukaCircuit"
+COLLECTION_NAME = "reference_telemetries"
+
+# TODO: Create system prompt to tell the LLM how to behave
+# TODO: Create "user" prompt that logically organizes data into segments to be passed to LLM fro comparison and assessment
 
 def retrieve_segment_data():
     # Connect to database

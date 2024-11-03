@@ -13,7 +13,7 @@ export const connectToDb = async function () {
     serverApi: { version: "1", strict: false, deprecationErrors: true },
   };
 
-  if (process.env.ENVIRONMENT === "prod") {
+  if (process.env.PROD === true) {
     uri = process.env.MONGODB_CONNECTION_URI;
     clientOptions.dbName = "SuzukaCircuit";
   } else {
@@ -46,7 +46,7 @@ export const sendDataToDb = async function () {
     // Insert data into MongoDB
     await Telemetry.insertMany(formattedJson)
       .then(() => console.log("Data sent successfully!"))
-      .catch((error) => {
+      .catch((err) => {
         console.error("Error inserting into database:\n", err.message);
       });
   } catch (err) {
