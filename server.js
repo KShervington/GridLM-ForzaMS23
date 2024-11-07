@@ -43,7 +43,7 @@ function parseDashPacket(msg) {
     parsedData.timestamp = buffer.readUInt32LE(4) * 1000; // convert to 64-bit integer by multiplying by 1000
     parsedData.currentEngineRpm = buffer.readFloatLE(16);
     parsedData.speed = buffer.readFloatLE(244);
-    parsedData.throttlePercent = Math.floor(buffer.readUInt8(303) / 255) * 100; // 0 - 255 for how much throttle is being applied
+    parsedData.throttlePercent = (buffer.readUInt8(303) / 255) * 100; // 0 - 255 for how much throttle is being applied
     parsedData.brake = buffer.readUInt8(304);
     parsedData.gear = buffer.readUInt8(307);
     parsedData.steering = buffer.readInt8(308); // 127 is full right; -127 is full left
@@ -90,15 +90,18 @@ function parseDashPacket(msg) {
     parsedData.currentLap = buffer.readUInt16LE(300) + 1; // 1st lap is considered lap 0
 
     parsedData.lapInfo = {
-      distanceTraveled: getLapDistance(
-        buffer.readFloatLE(280),
-        parsedData.currentLap - 1
-      ),
-      segment: getCurrentSegment(parsedData.lapInfo?.distanceTraveled ?? 0),
       bestLapTime: buffer.readFloatLE(284),
       lastLapTime: buffer.readFloatLE(288),
       currentLapTime: buffer.readFloatLE(292),
     };
+    // Distance is cumulative so it needs to be adjusted
+    parsedData.lapInfo.distanceTraveled = getLapDistance(
+      buffer.readFloatLE(280),
+      parsedData.currentLap - 1
+    );
+    parsedData.lapInfo.segment = getCurrentSegment(
+      parsedData.lapInfo.distanceTraveled
+    );
   }
 
   return parsedData;
