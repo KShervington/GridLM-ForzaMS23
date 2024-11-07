@@ -1,6 +1,8 @@
 from dotenv import load_dotenv
 from pymongo import MongoClient
 from langchain.prompts import PromptTemplate
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage, SystemMessage
 import pandas as pd
 import json
 import os
@@ -10,6 +12,22 @@ load_dotenv()
 
 DATABASE_NAME = "SuzukaCircuit"
 # COLLECTION_NAME = "reference_telemetries"
+
+MODEL = ChatOpenAI(model="gpt-4o-mini-2024-07-18")
+
+SYSTEM_MESSAGE = """
+You are an expert driving coach with extensive experience in analyzing racing telemetry data and providing strategic guidance for track performance optimization. You specialize in reviewing detailed telemetry inputs such as speed, acceleration, braking, throttle position, gear shifts, and cornering lines, and comparing them to ideal track performance metrics.
+
+Your role is to evaluate telemetry data, identify areas where the driver can improve, and make actionable suggestions. You should:
+
+1. Analyze how current driving performance aligns with or deviates from ideal driving techniques and track-specific strategies.
+2. Identify specific sections of the track where time can be gained or techniques improved, such as braking points, corner exits, throttle control, or gear usage.
+3. Use simple, clear explanations for your feedback, accompanied by analogies when needed, to ensure the driver understands the recommended changes.
+4. Provide context by relating specific driving metrics to their real-world impact on lap times and overall performance.
+5. Maintain a constructive, insightful, and motivating tone that encourages growth and confidence in the driver's abilities.
+
+Always consider consistency, and efficiency in your recommendations, aiming to help the driver achieve smoother, faster laps around the track.
+"""
 
 # TODO: Create system prompt to tell the LLM how to behave
 # TODO: Create "user" prompt that logically organizes data into segments to be passed to LLM fro comparison and assessment
@@ -64,13 +82,66 @@ def retrieve_segment_data(collection_name):
 
     return data_out
     
+def create_prompt(baseline_data, new_data):
+    prompt_template = """
+    You are an expert driving coach analyzing telemetry data for a driver on the track {track_name}. Below are two sets of detailed telemetry data segmented for analysis. For each segment, you will: 
+    1. Provide a performance rating out of 10 for the segment based on how the new data compares to the baseline telemetry data. 
+    2. Write a concise, natural language assessment summarizing the driver's performance in each segment, highlighting strengths, weaknesses, and potential improvements. 
+
+    Please maintain the structure provided, and format your response in a clear and structured manner. 
+    --- 
+    Track Name: {track_name}
+    ## Segment 1 
+    ### Analysis for Segment 1 
+    - **Performance Rating (out of 10)**: 
+    - **Assessment**: 
+
+    ## Segment 2
+    ### Analysis for Segment 2
+    - **Performance Rating (out of 10)**: 
+    - **Assessment**: 
+
+    --- 
+
+    Continue with this format for each segment. Ensure that the response maintains a consistent and structured approach. Be specific and actionable in the assessments, identifying key changes that could lead to improved performance. Also, consider consistency, and lap time efficiency in your suggestions. Here is the data you will be analyzing:
+
+    Baseline Telemetry Data:
+    {baseline_data}
+
+    Driver Telemetry Data:
+    {new_data}
+
+    """
+
+    # Initialize PromptTemplate for LangChain
+    prompt = PromptTemplate(
+        input_variables=["baseline_data", "new_data", "track_name"],
+        template=prompt_template
+    )
+
+    return prompt.format(baseline_data=baseline_data, new_data=new_data, track_name=DATABASE_NAME)
+
+def prompt_llm(user_prompt):
+    response = MODEL.invoke([SystemMessage(content=SYSTEM_MESSAGE),HumanMessage(content=user_prompt)])
+
+    return response.content
 
 def main():
     reference_telemetry = retrieve_segment_data(collection_name='reference_telemetries')
     player_telemetry = retrieve_segment_data(collection_name='telemetries')
 
-    print(f'reference_telemetry:\n{json.dumps(reference_telemetry, indent=2)}\n')
-    print(f'player_telemetry:\n{json.dumps(player_telemetry, indent=2)}\n')
+    # print(f'reference_telemetry:\n{json.dumps(reference_telemetry, indent=2)}\n')
+    # print(f'player_telemetry:\n{json.dumps(player_telemetry, indent=2)}\n')
+
+    formatted_prompt = create_prompt(reference_telemetry, player_telemetry)
+
+    llm_repsonse = prompt_llm(formatted_prompt)
+
+    with open("llm_assessment.txt", "w") as f:
+        # Write to the file
+        f.write(llm_repsonse)
+
+        f.close()
 
 
 if __name__ == "__main__":
