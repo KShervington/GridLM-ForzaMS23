@@ -6,6 +6,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 import pandas as pd
 import json
 import os
+import time
 
 # Load the environment variables from the .env file
 load_dotenv()
@@ -13,7 +14,7 @@ load_dotenv()
 DATABASE_NAME = "SuzukaCircuit"
 # COLLECTION_NAME = "reference_telemetries"
 
-MODEL = ChatOpenAI(model="gpt-4o-mini-2024-07-18")
+MODEL = ChatOpenAI(model="gpt-4o-mini-2024-07-18", temperature=0.8)
 
 SYSTEM_MESSAGE = """
 You are an expert driving coach with extensive experience in analyzing racing telemetry data and providing strategic guidance for track performance optimization. You specialize in reviewing detailed telemetry inputs such as speed, acceleration, braking, throttle position, gear shifts, and cornering lines, and comparing them to ideal track performance metrics.
@@ -28,9 +29,6 @@ Your role is to evaluate telemetry data, identify areas where the driver can imp
 
 Always consider consistency, and efficiency in your recommendations, aiming to help the driver achieve smoother, faster laps around the track.
 """
-
-# TODO: Create system prompt to tell the LLM how to behave
-# TODO: Create "user" prompt that logically organizes data into segments to be passed to LLM fro comparison and assessment
 
 def retrieve_segment_data(collection_name):
     # Connect to database
@@ -84,26 +82,24 @@ def retrieve_segment_data(collection_name):
     
 def create_prompt(baseline_data, new_data):
     prompt_template = """
-    You are an expert driving coach analyzing telemetry data for a driver on the track {track_name}. Below are two sets of detailed telemetry data segmented for analysis. For each segment, you will: 
-    1. Provide a performance rating out of 10 for the segment based on how the new data compares to the baseline telemetry data. 
-    2. Write a concise, natural language assessment summarizing the driver's performance in each segment, highlighting strengths, weaknesses, and potential improvements. 
+    You are an expert driving coach analyzing telemetry data for a driver on the track {track_name}. At the end of this prompt, there are two sets of detailed telemetry data segmented for analysis. For each segment, you will: 
+    1. Provide a performance rating out of 10 for the segment based on how the driver telemetry data compares to the baseline telemetry data. 
+    2. Write a natural language assessment, limited to 50 words, summarizing the driver's performance in each segment, highlighting strengths, weaknesses, and potential improvements. 
 
-    Please maintain the structure provided, and format your response in a clear and structured manner. 
-    --- 
-    Track Name: {track_name}
-    ## Segment 1 
-    ### Analysis for Segment 1 
+    Please maintain the structure provided: 
+    <start of structure example>
+    # Track Name: {track_name}
+
+    ## Segment <replace with segment number> 
     - **Performance Rating (out of 10)**: 
     - **Assessment**: 
 
-    ## Segment 2
-    ### Analysis for Segment 2
+    ## Segment <replace with next segment number>
     - **Performance Rating (out of 10)**: 
     - **Assessment**: 
+    <end of structure example>
 
-    --- 
-
-    Continue with this format for each segment. Ensure that the response maintains a consistent and structured approach. Be specific and actionable in the assessments, identifying key changes that could lead to improved performance. Also, consider consistency, and lap time efficiency in your suggestions. Here is the data you will be analyzing:
+    Continue with this format for each segment. Ensure that the response maintains a consistent and structured approach. Be specific and actionable in the assessments, identifying key changes that could lead to improved performance. Here is the data you will be analyzing:
 
     Baseline Telemetry Data:
     {baseline_data}
@@ -127,6 +123,8 @@ def prompt_llm(user_prompt):
     return response.content
 
 def main():
+    start = time.time()
+
     reference_telemetry = retrieve_segment_data(collection_name='reference_telemetries')
     player_telemetry = retrieve_segment_data(collection_name='telemetries')
 
@@ -137,12 +135,22 @@ def main():
 
     llm_repsonse = prompt_llm(formatted_prompt)
 
-    with open("llm_assessment.txt", "w") as f:
-        # Write to the file
-        f.write(llm_repsonse)
+    llm_output_path = "llm_assessment.md"
 
-        f.close()
+    try:
+        with open(llm_output_path, "w") as f:
+            # Write to the file
+            f.write(llm_repsonse)
 
+            f.close()
+
+            print(f'Wrote LLM response to local file: {llm_output_path}')
+    except:
+        print(f"Error writing LLM response to file: {llm_output_path}")
+
+    end = time.time()
+
+    print(f'Took [{end - start}] seconds to execute.')
 
 if __name__ == "__main__":
     main()
