@@ -8,3 +8,6 @@ node_modules
 
 # Data logged locally before being sent to database
 data
+
+# Locally downloaded LLMs
+**/*.gguf

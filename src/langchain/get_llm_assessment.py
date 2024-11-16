@@ -2,6 +2,8 @@ from dotenv import load_dotenv
 from pymongo import MongoClient
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
+import multiprocessing
+from langchain_community.chat_models import ChatLlamaCpp
 from langchain_core.messages import HumanMessage, SystemMessage
 import pandas as pd
 import json
@@ -12,9 +14,26 @@ import time
 load_dotenv()
 
 DATABASE_NAME = "SuzukaCircuit"
-# COLLECTION_NAME = "reference_telemetries"
 
 MODEL = ChatOpenAI(model="gpt-4o-mini-2024-07-18", temperature=0.8)
+
+# Path to downloaded LLM file
+local_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_models", "llama-3.2-3b-instruct-q6_k.gguf")
+print(f"Attempting to load model from: {local_model_path}")
+
+LOCAL_MODEL = ChatLlamaCpp(
+    temperature=0.8,
+    model_path=local_model_path,
+    n_ctx=10000,
+    n_gpu_layers=8,
+    n_batch=300,  # Should be between 1 and n_ctx, consider the amount of VRAM in your GPU.
+    max_tokens=5000,
+    n_threads=multiprocessing.cpu_count() - 1,
+    # top_p=0.5,
+    verbose=True,
+)
+
+USE_LOCAL_MODEL = True
 
 SYSTEM_MESSAGE = """
 You are an expert driving coach with extensive experience in analyzing racing telemetry data and providing strategic guidance for track performance optimization. You specialize in reviewing detailed telemetry inputs such as speed, acceleration, braking, throttle position, gear shifts, and cornering lines, and comparing them to ideal track performance metrics.
@@ -118,7 +137,10 @@ def create_prompt(baseline_data, new_data):
     return prompt.format(baseline_data=baseline_data, new_data=new_data, track_name=DATABASE_NAME)
 
 def prompt_llm(user_prompt):
-    response = MODEL.invoke([SystemMessage(content=SYSTEM_MESSAGE),HumanMessage(content=user_prompt)])
+    if USE_LOCAL_MODEL:
+        response = LOCAL_MODEL.invoke([SystemMessage(content=SYSTEM_MESSAGE),HumanMessage(content=user_prompt)])
+    else:
+        response = MODEL.invoke([SystemMessage(content=SYSTEM_MESSAGE),HumanMessage(content=user_prompt)])
 
     return response.content
 
