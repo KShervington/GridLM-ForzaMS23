@@ -1,4 +1,6 @@
-Run the application with `npm run start`.
+# Data collection
+
+Run the application for data collection with `npm run start`.
 
 # Example of telemetry Data
 

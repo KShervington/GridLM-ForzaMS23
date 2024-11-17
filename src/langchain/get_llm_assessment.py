@@ -6,6 +6,7 @@ import multiprocessing
 from langchain_community.chat_models import ChatLlamaCpp
 from langchain_core.messages import HumanMessage, SystemMessage
 import pandas as pd
+import numpy as np
 import json
 import os
 import time
@@ -17,16 +18,15 @@ DATABASE_NAME = "SuzukaCircuit"
 
 MODEL = ChatOpenAI(model="gpt-4o-mini-2024-07-18", temperature=0.8)
 
-# Path to downloaded LLM file
+# Path to downloaded LLM file by extracting directory from current file path
 local_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_models", "llama-3.2-3b-instruct-q6_k.gguf")
-print(f"Attempting to load model from: {local_model_path}")
 
 LOCAL_MODEL = ChatLlamaCpp(
-    temperature=0.8,
+    temperature=0.5,
     model_path=local_model_path,
     n_ctx=10000,
-    n_gpu_layers=8,
-    n_batch=300,  # Should be between 1 and n_ctx, consider the amount of VRAM in your GPU.
+    n_gpu_layers=-1, # move all layers to GPU
+    # n_batch=300,  # Should be between 1 and n_ctx, consider the amount of VRAM in your GPU.
     max_tokens=5000,
     n_threads=multiprocessing.cpu_count() - 1,
     # top_p=0.5,
@@ -36,17 +36,7 @@ LOCAL_MODEL = ChatLlamaCpp(
 USE_LOCAL_MODEL = True
 
 SYSTEM_MESSAGE = """
-You are an expert driving coach with extensive experience in analyzing racing telemetry data and providing strategic guidance for track performance optimization. You specialize in reviewing detailed telemetry inputs such as speed, acceleration, braking, throttle position, gear shifts, and cornering lines, and comparing them to ideal track performance metrics.
-
-Your role is to evaluate telemetry data, identify areas where the driver can improve, and make actionable suggestions. You should:
-
-1. Analyze how current driving performance aligns with or deviates from ideal driving techniques and track-specific strategies.
-2. Identify specific sections of the track where time can be gained or techniques improved, such as braking points, corner exits, throttle control, or gear usage.
-3. Use simple, clear explanations for your feedback, accompanied by analogies when needed, to ensure the driver understands the recommended changes.
-4. Provide context by relating specific driving metrics to their real-world impact on lap times and overall performance.
-5. Maintain a constructive, insightful, and motivating tone that encourages growth and confidence in the driver's abilities.
-
-Always consider consistency, and efficiency in your recommendations, aiming to help the driver achieve smoother, faster laps around the track.
+You are an expert driving coach with extensive experience in analyzing racing telemetry data and providing strategic guidance for track performance optimization. Your role is to evaluate telemetry data, identify areas where the driver can improve, and make actionable suggestions. Always provide clear, specific, and motivating feedback to help the driver achieve smoother and faster laps.
 """
 
 def retrieve_segment_data(collection_name):
@@ -59,7 +49,7 @@ def retrieve_segment_data(collection_name):
     print('Connected to database')
 
     # Get maximum segment from data
-    max_segment_doc  = collection.find().sort("lapInfo.segment", -1).limit(1)
+    max_segment_doc = collection.find().sort("lapInfo.segment", -1).limit(1)
     max_segment_num = max_segment_doc[0]["lapInfo"]["segment"]
 
     data_out = {}
@@ -73,24 +63,42 @@ def retrieve_segment_data(collection_name):
         data_len = len(data)
 
         sub_segments = 10
+
         # Number of values to be averaged within each subsegment
         window_size = int(data_len / sub_segments)+1
 
-        # Get array of average speeds caclculated for each eub segment
+        # Get array of average values caclculated for each sub segment
         avg_speed_array = data['speed'].rolling(window=window_size).mean()[window_size-1::window_size].reset_index(drop=True)
+        avg_brake_pressure_array = data['brake'].rolling(window=window_size).mean()[window_size-1::window_size].reset_index(drop=True)
+        avg_throttle_percent_array = data['throttlePercent'].rolling(window=window_size).mean()[window_size-1::window_size].reset_index(drop=True)
 
-        # Convert averaged data into a string for prompt formatting
-        avg_speed_str = ', '.join([f"{val:.2f}" for val in avg_speed_array])
+        # Get the most frequent gear value in each subsegment
+        most_common_gear_array = data['gear'].rolling(window=window_size).apply(lambda x: pd.Series(x).value_counts().idxmax(), raw=True)[window_size-1::window_size].reset_index(drop=True)
+
+        # Use numpy for vectorized operations
+        x_acceleration_array = np.array([geometry['accelerationX'] for geometry in data['geometry']])
+        y_acceleration_array = np.array([geometry['accelerationY'] for geometry in data['geometry']])
+
+        # Calculate true rate of change by combining forward and lateral acceleration
+        data['acceleration'] = np.sqrt(x_acceleration_array**2 + y_acceleration_array**2)
+
+        avg_accel_array = data['acceleration'].rolling(window=window_size).mean()[window_size-1::window_size].reset_index(drop=True)
+
+        # Can categorize data based on relation to max and min values
 
         seg_obj = {}
-        seg_obj['avg_speeds'] = avg_speed_str
-        # add other telem data to obj like above
+        seg_obj['avg_speed_over_time'] = avg_speed_array
+        seg_obj['avg_acceleration_over_time'] = avg_accel_array
+        seg_obj['avg_brake_pressure_over_time'] = avg_brake_pressure_array
+        seg_obj['avg_throttle_percentage_over_time'] = avg_throttle_percent_array
+        seg_obj['most_common_gear_values_over_time'] = most_common_gear_array
+
+        # Convert values of each attribute in seg_obj into a string for prompt formatting
+        for attr, value in seg_obj.items():
+            seg_obj[attr] = ', '.join([f"{val:.2f}" for val in value])
 
         # Add all curret segment data to an object 
         data_out['segments'][seg_num] = seg_obj
-
-        # print(f'Retrieved {data_len} documents for segment {seg_num}')
-        # print(f'Average speeds: {avg_speed_str}\n')
 
     # Close the connection after use
     client.close()
@@ -101,24 +109,24 @@ def retrieve_segment_data(collection_name):
     
 def create_prompt(baseline_data, new_data):
     prompt_template = """
-    You are an expert driving coach analyzing telemetry data for a driver on the track {track_name}. At the end of this prompt, there are two sets of detailed telemetry data segmented for analysis. For each segment, you will: 
-    1. Provide a performance rating out of 10 for the segment based on how the driver telemetry data compares to the baseline telemetry data. 
-    2. Write a natural language assessment, limited to 50 words, summarizing the driver's performance in each segment, highlighting strengths, weaknesses, and potential improvements. 
+    Below are summarized telemetry data for the track {track_name}, segmented for analysis. Your task is to:
+    1. Performance Rating (out of 10): For each segment, rate the driver's performance based on how their telemetry data compares to the baseline data.
+    2. Assessment: Write a concise assessment (maximum 50 words) for each segment, highlighting strengths, weaknesses, and potential improvements.
+    
+    Please follow this structure that has been defined in Markdown:
+    # Track Name: {track_name} 
 
-    Please maintain the structure provided: 
-    <start of structure example>
-    # Track Name: {track_name}
-
-    ## Segment <replace with segment number> 
+    ## Segment <segment number> 
     - **Performance Rating (out of 10)**: 
     - **Assessment**: 
 
-    ## Segment <replace with next segment number>
+    ## Segment <next segment number> 
     - **Performance Rating (out of 10)**: 
     - **Assessment**: 
-    <end of structure example>
 
-    Continue with this format for each segment. Ensure that the response maintains a consistent and structured approach. Be specific and actionable in the assessments, identifying key changes that could lead to improved performance. Here is the data you will be analyzing:
+    ... (continue for the remaining 8 segments)
+
+    Ensure that your response is consistent and structured. Be specific and actionable in your assessments, identifying key changes that could lead to improved performance.
 
     Baseline Telemetry Data:
     {baseline_data}
@@ -148,10 +156,12 @@ def main():
     start = time.time()
 
     reference_telemetry = retrieve_segment_data(collection_name='reference_telemetries')
-    player_telemetry = retrieve_segment_data(collection_name='telemetries')
+    reference_telemetry = json.dumps(reference_telemetry, indent=2)
 
-    # print(f'reference_telemetry:\n{json.dumps(reference_telemetry, indent=2)}\n')
-    # print(f'player_telemetry:\n{json.dumps(player_telemetry, indent=2)}\n')
+    player_telemetry = retrieve_segment_data(collection_name='telemetries')
+    player_telemetry = json.dumps(player_telemetry, indent=2)
+
+    # TODO: Create function to calculate deltas between reference and player telemetry data
 
     formatted_prompt = create_prompt(reference_telemetry, player_telemetry)
 
