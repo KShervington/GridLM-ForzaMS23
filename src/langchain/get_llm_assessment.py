@@ -3,7 +3,7 @@ from pymongo import MongoClient
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 import multiprocessing
-from langchain_community.chat_models import ChatLlamaCpp
+from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, SystemMessage
 import pandas as pd
 import numpy as np
@@ -17,25 +17,21 @@ load_dotenv()
 
 DATABASE_NAME = "SuzukaCircuit"
 
-MODEL = ChatOpenAI(model="gpt-4o-mini-2024-07-18", temperature=0.5)
-
-# Path to downloaded LLM file by extracting directory from current file path
-local_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_models", "llama-3.2-3b-instruct-q6_k.gguf")
-
-LOCAL_MODEL = ChatLlamaCpp(
-    temperature=0.5,
-    model_path=local_model_path,
-    n_ctx=10000,
-    n_gpu_layers=-1, # move all layers to GPU
-    # n_batch=300,  # Should be between 1 and n_ctx, consider the amount of VRAM in your GPU.
-    max_tokens=5000,
-    n_threads=multiprocessing.cpu_count() - 1,
-    # top_p=0.5,
-    verbose=True,
-)
-
 USE_LOCAL_MODEL = True
 
+if USE_LOCAL_MODEL:
+    MODEL = ChatOllama(
+    temperature=0.5,
+    model='llama3.2:3b',
+    num_ctx=10000,
+    num_gpu=1,
+    num_predict=5000,
+    num_thread=multiprocessing.cpu_count() / 2, # recommended to use number of physical cores rather than logical
+)
+else:
+    MODEL = ChatOpenAI(model="gpt-4o-mini-2024-07-18", temperature=0.5)
+
+# System message to be sent to the model
 SYSTEM_MESSAGE = """
 You are an expert driving coach with extensive experience in analyzing racing telemetry data and providing strategic guidance for track performance optimization. Your role is to evaluate telemetry data, identify areas where the driver can improve, and make actionable suggestions. Always provide clear, specific, and motivating feedback to help the driver achieve smoother and faster laps.
 """
@@ -140,10 +136,7 @@ def create_prompt(data_comparisons):
     return prompt.format(data_comparisons=data_comparisons, track_name=DATABASE_NAME)
 
 def prompt_llm(user_prompt):
-    if USE_LOCAL_MODEL:
-        response = LOCAL_MODEL.invoke([SystemMessage(content=SYSTEM_MESSAGE),HumanMessage(content=user_prompt)])
-    else:
-        response = MODEL.invoke([SystemMessage(content=SYSTEM_MESSAGE),HumanMessage(content=user_prompt)])
+    response = MODEL.invoke([SystemMessage(content=SYSTEM_MESSAGE),HumanMessage(content=user_prompt)])
 
     return response.content
 
@@ -162,6 +155,7 @@ def main():
 
     formatted_prompt = create_prompt(comparisons)
 
+    print('Initiating LLM assessment...')
     llm_repsonse = prompt_llm(formatted_prompt)
 
     llm_output_path = "llm_assessment.md"
