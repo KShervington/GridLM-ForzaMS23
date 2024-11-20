@@ -11,3 +11,6 @@ data
 
 # Locally downloaded LLMs
 **/*.gguf
+
+# Python cache
+**/__pycache__

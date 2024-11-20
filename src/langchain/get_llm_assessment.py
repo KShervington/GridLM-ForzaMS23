@@ -10,13 +10,14 @@ import numpy as np
 import json
 import os
 import time
+from compare_data import compare_telemetry
 
 # Load the environment variables from the .env file
 load_dotenv()
 
 DATABASE_NAME = "SuzukaCircuit"
 
-MODEL = ChatOpenAI(model="gpt-4o-mini-2024-07-18", temperature=0.8)
+MODEL = ChatOpenAI(model="gpt-4o-mini-2024-07-18", temperature=0.5)
 
 # Path to downloaded LLM file by extracting directory from current file path
 local_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_models", "llama-3.2-3b-instruct-q6_k.gguf")
@@ -94,8 +95,8 @@ def retrieve_segment_data(collection_name):
         seg_obj['most_common_gear_values_over_time'] = most_common_gear_array
 
         # Convert values of each attribute in seg_obj into a string for prompt formatting
-        for attr, value in seg_obj.items():
-            seg_obj[attr] = ', '.join([f"{val:.2f}" for val in value])
+        # for attr, value in seg_obj.items():
+        #     seg_obj[attr] = ', '.join([f"{val:.2f}" for val in value])
 
         # Add all curret segment data to an object 
         data_out['segments'][seg_num] = seg_obj
@@ -107,13 +108,13 @@ def retrieve_segment_data(collection_name):
 
     return data_out
     
-def create_prompt(baseline_data, new_data):
+def create_prompt(data_comparisons):
     prompt_template = """
     Below are summarized telemetry data for the track {track_name}, segmented for analysis. Your task is to:
     1. Performance Rating (out of 10): For each segment, rate the driver's performance based on how their telemetry data compares to the baseline data.
     2. Assessment: Write a concise assessment (maximum 50 words) for each segment, highlighting strengths, weaknesses, and potential improvements.
     
-    Please follow this structure that has been defined in Markdown:
+    Please follow this structure for your response:
     # Track Name: {track_name} 
 
     ## Segment <segment number> 
@@ -124,25 +125,19 @@ def create_prompt(baseline_data, new_data):
     - **Performance Rating (out of 10)**: 
     - **Assessment**: 
 
-    ... (continue for the remaining 8 segments)
+    Ensure that your response is consistent and structured. Be specific and actionable in your assessments, identifying key changes that could lead to improved performance. Repeat the above structure for all 10 segments in the data below.
 
-    Ensure that your response is consistent and structured. Be specific and actionable in your assessments, identifying key changes that could lead to improved performance.
-
-    Baseline Telemetry Data:
-    {baseline_data}
-
-    Driver Telemetry Data:
-    {new_data}
-
+    Comparison of Driver Telemetry Data to the Baseline Telemetry Data:
+    {data_comparisons}
     """
 
     # Initialize PromptTemplate for LangChain
     prompt = PromptTemplate(
-        input_variables=["baseline_data", "new_data", "track_name"],
+        input_variables=["data_comparisons", "track_name"],
         template=prompt_template
     )
 
-    return prompt.format(baseline_data=baseline_data, new_data=new_data, track_name=DATABASE_NAME)
+    return prompt.format(data_comparisons=data_comparisons, track_name=DATABASE_NAME)
 
 def prompt_llm(user_prompt):
     if USE_LOCAL_MODEL:
@@ -156,14 +151,16 @@ def main():
     start = time.time()
 
     reference_telemetry = retrieve_segment_data(collection_name='reference_telemetries')
-    reference_telemetry = json.dumps(reference_telemetry, indent=2)
+    # reference_telemetry = json.dumps(reference_telemetry, indent=2)
 
     player_telemetry = retrieve_segment_data(collection_name='telemetries')
-    player_telemetry = json.dumps(player_telemetry, indent=2)
+    # player_telemetry = json.dumps(player_telemetry, indent=2)
 
-    # TODO: Create function to calculate deltas between reference and player telemetry data
+    # Calculate deltas between reference and player telemetry data
+    comparisons = compare_telemetry(baseline_data=reference_telemetry, driver_data=player_telemetry)
+    comparisons = json.dumps(comparisons, indent=2)
 
-    formatted_prompt = create_prompt(reference_telemetry, player_telemetry)
+    formatted_prompt = create_prompt(comparisons)
 
     llm_repsonse = prompt_llm(formatted_prompt)
 
