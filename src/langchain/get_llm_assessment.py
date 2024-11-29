@@ -21,8 +21,9 @@ USE_LOCAL_MODEL = True
 
 if USE_LOCAL_MODEL:
     MODEL = ChatOllama(
+    disable_streaming=True,
     temperature=0.5,
-    model='llama3.2:3b',
+    model='llama3.2:3b-instruct_local',
     num_ctx=10000,
     num_gpu=1,
     num_predict=5000,
@@ -158,7 +159,8 @@ def main():
     print('Initiating LLM assessment...')
     llm_repsonse = prompt_llm(formatted_prompt)
 
-    llm_output_path = "llm_assessment.md"
+    llm_output_file = f"llm_assessment_0.md"
+    llm_output_path = os.path.join(os.getcwd(), "src", "experiments", "llm_outputs", "llama_3-2_3b_instruct", llm_output_file) # Executed from root directory
 
     try:
         with open(llm_output_path, "w") as f:
