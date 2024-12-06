@@ -1,7 +1,19 @@
 node_modules
 
-# Environment variable
+# Environment variables
 .env
+
+# Virtual environment
+.conda-env
 
 # Data logged locally before being sent to database
 data
+
+# Locally downloaded LLMs
+**/*.gguf
+
+# Model outputs from experiments
+# src/experiments/**/*.md
+
+# Python cache
+**/__pycache__
