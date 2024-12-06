@@ -122,7 +122,10 @@ def create_prompt(data_comparisons):
     - **Performance Rating (out of 10)**: 
     - **Assessment**: 
 
-    Ensure that your response is consistent and structured. Be specific and actionable in your assessments, identifying key changes that could lead to improved performance. Repeat the above structure for all 10 segments in the data below.
+    Ensure that your response is consistent and structured. Be specific and actionable in your assessments, identifying key changes that could lead to improved performance. Here is an example of an assessment:
+    "Minimize braking in this segment, focusing on maintaining momentum. Apply higher brake pressure for sharper braking. Try holding 3rd gear through this segment to carry more speed. Apply throttle earlier to improve acceleration."
+
+    Repeat the defined structure for all 10 segments in the data below.
 
     Comparison of Driver Telemetry Data to the Baseline Telemetry Data:
     {data_comparisons}
@@ -156,22 +159,23 @@ def main():
 
     formatted_prompt = create_prompt(comparisons)
 
-    print('Initiating LLM assessment...')
-    llm_repsonse = prompt_llm(formatted_prompt)
+    for i in range(6, 8):
+        print(f'Initiating LLM assessment [{i}]...')
+        llm_repsonse = prompt_llm(formatted_prompt)
 
-    llm_output_file = f"llm_assessment_0.md"
-    llm_output_path = os.path.join(os.getcwd(), "src", "experiments", "llm_outputs", "llama_3-2_3b_instruct", llm_output_file) # Executed from root directory
+        llm_output_file = f"llm_assessment_{i}.md"
+        llm_output_path = os.path.join(os.getcwd(), "src", "experiments", "llm_outputs", "llama_3-2_3b_instruct", llm_output_file) # Executed from root directory
 
-    try:
-        with open(llm_output_path, "w") as f:
-            # Write to the file
-            f.write(llm_repsonse)
+        try:
+            with open(llm_output_path, "w") as f:
+                # Write to the file
+                f.write(llm_repsonse)
 
-            f.close()
+                f.close()
 
-            print(f'Wrote LLM response to local file: {llm_output_path}')
-    except:
-        print(f"Error writing LLM response to file: {llm_output_path}")
+                print(f'Wrote LLM response to local file: {llm_output_path}')
+        except:
+            print(f"Error writing LLM response to file: {llm_output_path}")
 
     end = time.time()
 

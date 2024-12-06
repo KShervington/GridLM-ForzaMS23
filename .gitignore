@@ -13,7 +13,7 @@ data
 **/*.gguf
 
 # Model outputs from experiments
-src/experiments/**/*.md
+# src/experiments/**/*.md
 
 # Python cache
 **/__pycache__
